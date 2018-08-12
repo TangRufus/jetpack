@@ -88,8 +88,9 @@ class Jetpack_XMLRPC_Server {
 
 	function provision_xmlrpc_methods() {
 		return array(
-			'jetpack.remoteRegister' => array( $this, 'remote_register' ),
-			'jetpack.remoteProvision'   => array( $this, 'remote_provision' ),
+			'jetpack.remoteRegister'  => array( $this, 'remote_register' ),
+			'jetpack.remoteProvision' => array( $this, 'remote_provision' ),
+			'jetpack.remoteConnect'   => array( $this, 'remote_connect' ),
 		);
 	}
 
@@ -279,6 +280,50 @@ class Jetpack_XMLRPC_Server {
 		}
 
 		return $response;
+	}
+
+	public function remote_connect( $request ) {
+		if ( Jetpack::is_active() ) {
+			return $this->error(
+				new WP_Error(
+					'already_connected',
+					__( 'Jetpack is already connected.', 'jetpack' ), 400
+				),
+				'jpc_remote_register_fail'
+			);
+		}
+
+		$user = $this->fetch_and_verify_local_user( $request );
+
+		if ( ! $user | is_wp_error( $user ) || is_a( $user, 'IXR_Error' ) ) {
+			return $this->error(
+				new WP_Error(
+					'input_error',
+					__( 'Valid user is required', 'jetpack' ), 400
+				),
+				'jpc_remote_connect_fail'
+			);
+		}
+
+		if ( empty( $request['token'] ) ) {
+			return $this->error(
+				new WP_Error(
+					'input_error',
+					__( 'A non-empty token must be supplied.', 'jetpack' ), 400
+				),
+				'jpc_remote_connect_fail'
+			);
+		}
+
+		$token = sanitize_text_field( $request['token'] );
+
+		Jetpack::update_user_token( $user->ID, sprintf( '%s.%d', $token, $user->ID ), true );
+
+		/** This filter is documented in class.jetpack-cli.php */
+		$enable_sso = apply_filters( 'jetpack_start_enable_sso', true );
+		Jetpack::handle_post_authorization_actions( $enable_sso, false );
+
+		return Jetpack::is_active();
 	}
 
 	private function fetch_and_verify_local_user( $request ) {
